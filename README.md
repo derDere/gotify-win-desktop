@@ -109,6 +109,8 @@ Behavior:
 - If already installed, prompts to uninstall.
 - If not installed, performs install (`--install`).
 
+Note: This app now uses `winotify` for native Windows toasts. `build.ps1` installs dependencies from `requirements.txt` which includes `winotify`. If `pip install -r requirements.txt` fails to find `winotify`, ensure your Python/pip are up-to-date and you are on a supported Windows environment (Windows 10/11). If you still see issues, run the setup and build on a clean Python 3.11 virtual environment.
+
 ## Troubleshooting
 - If you see `401 Unauthorized`, the app backs off reconnect attempts automatically.
 - Notifications rely on Windows; ensure Focus Assist / Do Not Disturb is off if you don’t see toasts.

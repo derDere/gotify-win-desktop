@@ -87,6 +87,16 @@ def save_config():
         os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     except Exception:
         pass
+
+
+def set_windows_app_id(app_id: str):
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        log("AppUserModelID set:", app_id)
+    except Exception:
+        # Non-Windows or older systems may fail silently
+        pass
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(CONFIG, f)
     log("Config saved:", CONFIG_FILE)
@@ -141,12 +151,7 @@ def ws_thread_func(url, display):
                 if datetime.now() < verboseagain:
                     return
 
-                notification.notify(
-                    title=title,
-                    message=msg_text,
-                    app_name=display,
-                    timeout=CONFIG.get("notify_timeout", 30)
-                )
+                notify(text=msg_text, title=title, app_name=display, timeout=CONFIG.get("notify_timeout", 30))
 
             def on_open(ws):
                 with connection_states_lock:
@@ -212,6 +217,29 @@ def parse_gotify_message(msg):
     title = data.get("title", "Gotify")
     message = data.get("message", "")
     return title, message
+
+
+def notify(text, title="Gotify", app_name="Gotify Client", timeout=30):
+        # This application requires WinRT to show Windows native toasts.
+        if sys.platform != 'win32':
+                log('notify() called on non-Windows platform')
+                return
+
+        try:
+            from winotify import Notification, audio
+        except Exception:
+            log('winotify not available. Please install winotify in the build environment.')
+            return
+
+        try:
+            toast = Notification(app_id=app_name,
+                                 title=title,
+                                 msg=text,
+                                 icon=get_icon_path())
+            toast.set_audio(audio.Default, loop=False)
+            toast.show()
+        except Exception:
+            log("winotify toast failed:", traceback.format_exc())
 
 
 def restart_connections():
@@ -283,9 +311,13 @@ class ConfigWindow:
         self.text.pack(fill="both", expand=True)
         self.text.insert("1.0", "\n".join(CONFIG["urls"]))
 
-        ttk.Label(frame, text="Status dot (green=all ok, yellow=partial, red=down):").pack(anchor="w", pady=(10,0))
-        self.status_canvas = tk.Canvas(frame, width=16, height=16)
-        self.status_canvas.pack(anchor="w")
+        status_row = ttk.Frame(frame)
+        status_row.pack(anchor="w", pady=(10,0), fill="x")
+        ttk.Label(status_row, text="Status dot (green=all ok, yellow=partial, red=down):").pack(side="left")
+        self.status_canvas = tk.Canvas(status_row, width=16, height=16)
+        self.status_canvas.pack(side="left", padx=(8,0))
+        test_btn = ttk.Button(status_row, text="Test", command=self.on_test_notify)
+        test_btn.pack(side="left", padx=(12,0))
         self.status_canvas.bind("<Enter>", self.tooltip_enter)
         self.status_canvas.bind("<Leave>", self.tooltip_leave)
 
@@ -294,6 +326,12 @@ class ConfigWindow:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.schedule_status_update()
+
+    def on_test_notify(self):
+        try:
+            notify(text="This is a test notification", title="Gotify Test", app_name="Notify Client", timeout=30)
+        except Exception:
+            messagebox.showerror("Error", traceback.format_exc())
 
     def schedule_status_update(self):
         self.update_status_dot()
@@ -557,6 +595,8 @@ def main():
     args = parser.parse_args()
 
     log("Notify Client starting...")
+    # Improve Windows toast attribution: set AppUserModelID before any UI/notifications
+    set_windows_app_id("GotifyWinClient.GotifyClient")
     if args.install:
         install_to_user_programs_and_startup()
         return

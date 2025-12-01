@@ -3,3 +3,4 @@ websocket-client
 plyer
 pillow
 pyyaml
+winotify
