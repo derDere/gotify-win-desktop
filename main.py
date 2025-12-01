@@ -420,7 +420,7 @@ def notify(text, title="Gotify", app_name="Gotify Client", timeout=30):
                 log('play_sound() failed:', traceback.format_exc())
         elif sound_setting == 'tts':
             try:
-                combined = f"{title}\n\n{text}"
+                combined = f"{title}\n---\n{text}"
                 text_to_speech(combined)
             except Exception:
                 log('text_to_speech() failed:', traceback.format_exc())
