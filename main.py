@@ -54,6 +54,7 @@ def get_config_path():
 CONFIG_FILE = get_config_path()
 ICON_FILE = "notify_client.ico"
 SOUND_FILE = "sound_file.mp3"
+MAX_SANITIZED_NAME = 120
 
 def get_icon_path():
     # When bundled with PyInstaller, data files are under sys._MEIPASS
@@ -299,6 +300,10 @@ def parse_gotify_message(msg):
 
 
 def text_to_speech(text: str):
+    # Require OPENAI_API_KEY for TTS
+    if not os.environ.get('OPENAI_API_KEY'):
+        log('text_to_speech: OPENAI_API_KEY not set; skipping TTS')
+        return
     # Create a sanitized filename from the text and cache MP3s next to the exe
     voice = CONFIG.get('voice', 'coral')
     instructions = CONFIG.get('instructions', 'Speak in a cheerful and positive tone.')
@@ -310,8 +315,8 @@ def text_to_speech(text: str):
 
     # Sanitize filename: remove all non-word characters
     name = re.sub(r'\W+', '', text)
-    if not name:
-        # fallback to hash when name becomes empty or too long
+    # If sanitized name is empty or excessively long, fallback to a hash
+    if not name or len(name) > MAX_SANITIZED_NAME:
         name = hashlib.sha256(text.encode('utf-8')).hexdigest()
     # limit length to reasonable filename size
     name = name[:200]
