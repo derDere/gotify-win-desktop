@@ -45,6 +45,7 @@ def get_icon_path():
     cwd = os.path.join(os.getcwd(), ICON_FILE)
     return cwd
 
+
 # global runtime state
 ws_threads = []
 connection_states = {}        # url -> True/False
@@ -53,6 +54,8 @@ last_errors = {}              # url -> short error info
 
 verboseagain = datetime.now()  # silent mode end
 running = True
+
+REPO_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
 
 CONFIG = {
     "urls": [],
@@ -72,20 +75,55 @@ def log(*args):
 
 def load_config():
     global CONFIG
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            CONFIG = yaml.safe_load(f)
-        log("Config loaded:", CONFIG_FILE, "urls=", len(CONFIG.get("urls", [])), "timeout=", CONFIG.get("notify_timeout"), "silent=", CONFIG.get("silent_time"))
-    else:
-        save_config()
-        log("Config created with defaults:", CONFIG_FILE)
+    # Prefer user config; if missing, fall back to repo config and copy it to user config
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                if isinstance(data, dict):
+                    CONFIG.update(data)
+        elif os.path.exists(REPO_CONFIG_FILE):
+            try:
+                shutil.copy2(REPO_CONFIG_FILE, CONFIG_FILE)
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                    if isinstance(data, dict):
+                        CONFIG.update(data)
+                log("Copied config from repo to user config:", REPO_CONFIG_FILE, "->", CONFIG_FILE)
+            except Exception:
+                log("Failed to copy repo config to user config:", traceback.format_exc())
+        else:
+            save_config()
+            log("Config created with defaults:", CONFIG_FILE)
+    except Exception:
+        log("Error loading config:", traceback.format_exc())
+
+    log("Config loaded:", CONFIG_FILE, "urls=", len(CONFIG.get("urls", [])), "timeout=", CONFIG.get("notify_timeout"), "silent=", CONFIG.get("silent_time"))
 
 
 def save_config():
-    # ensure parent directory exists if user changed to a path with folders
+    # ensure parent directory exists
     try:
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+        parent = os.path.dirname(CONFIG_FILE)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
     except Exception:
+        pass
+
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            yaml.safe_dump(CONFIG, f)
+        log("Config saved:", CONFIG_FILE)
+    except Exception:
+        log("Failed to save user config:", traceback.format_exc())
+
+    # Mirror to repo config if writable
+    try:
+        with open(REPO_CONFIG_FILE, "w", encoding="utf-8") as f:
+            yaml.safe_dump(CONFIG, f)
+        log("Config mirrored to repo:", REPO_CONFIG_FILE)
+    except Exception:
+        # Non-fatal
         pass
 
 
@@ -97,10 +135,6 @@ def set_windows_app_id(app_id: str):
     except Exception:
         # Non-Windows or older systems may fail silently
         pass
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(CONFIG, f)
-    log("Config saved:", CONFIG_FILE)
-
 
 def extract_display_and_url(line):
     line = line.strip()
