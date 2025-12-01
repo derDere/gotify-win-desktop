@@ -60,7 +60,9 @@ REPO_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "con
 CONFIG = {
     "urls": [],
     "notify_timeout": 30,
-    "silent_time": 10
+    "silent_time": 10,
+    "ignore_ssl_errors": False,
+    "sound": "windows"
 }
 
 def log(*args):
@@ -333,6 +335,85 @@ class ConfigWindow:
         cmb1.pack(fill="x")
         self.timeout_var.set(self.seconds_to_label(CONFIG.get("notify_timeout", 30)))
 
+        # Ignore SSL errors checkbox
+        self.ignore_var = tk.BooleanVar(value=CONFIG.get("ignore_ssl_errors", False))
+        chk = ttk.Checkbutton(frame, text="Ignore SSL certificate errors (unsafe)", variable=self.ignore_var)
+        chk.pack(anchor="w", pady=(8,0))
+
+        # Sound selection (display names mapped to internal keys)
+        ttk.Label(frame, text="Notification Sound:").pack(anchor="w", pady=(8,0))
+        self.sound_var = tk.StringVar()
+        # list of (display, key)
+        self._sound_options = [
+            ("Windows sound", "windows"),
+            ("Sound file", "sound_file"),
+            ("Text to speech", "tts")
+        ]
+        sound_display = [d for d,k in self._sound_options]
+        cmb_sound = ttk.Combobox(frame, textvariable=self.sound_var, values=sound_display, state="readonly")
+        cmb_sound.pack(fill="x")
+        # set initial selection based on config key
+        cur_key = CONFIG.get("sound", "windows")
+        cur_display = next((d for d,k in self._sound_options if k == cur_key), self._sound_options[0][0])
+        self.sound_var.set(cur_display)
+
+        # TTS info label (hidden unless Text to speech selected). Use darker orange/red.
+        self.tts_info = ttk.Label(frame, text="Text-to-speech requires OPENAI_API_KEY environment variable.", foreground="#cc3300")
+        # Voice selection and instructions widgets (created but not packed)
+        self.voice_label = ttk.Label(frame, text="Voice:")
+        self.voice_var = tk.StringVar()
+        voices = ["alloy","ash","ballad","coral","echo","fable","nova","onyx","sage","shimmer"]
+        self.voice_cmb = ttk.Combobox(frame, textvariable=self.voice_var, values=voices, state="readonly")
+
+        self.instr_label = ttk.Label(frame, text="Instructions (how to speak):")
+        self.instructions_var = tk.StringVar()
+        self.instructions_entry = ttk.Entry(frame, textvariable=self.instructions_var, width=80)
+
+        # default values from config
+        self.voice_var.set(CONFIG.get("voice", voices[0]))
+        self.instructions_var.set(CONFIG.get("instructions", "Speak in a cheerful and positive tone."))
+
+        # Pack/hide the TTS related widgets based on selection
+        def show_tts_widgets():
+            try:
+                self.tts_info.pack(after=cmb_sound, anchor="w", pady=(4,0))
+            except Exception:
+                self.tts_info.pack(anchor="w", pady=(4,0))
+            try:
+                self.voice_label.pack(after=self.tts_info, anchor="w", pady=(4,0))
+                self.voice_cmb.pack(after=self.voice_label, fill="x")
+                self.instr_label.pack(after=self.voice_cmb, anchor="w", pady=(4,0))
+                self.instructions_entry.pack(after=self.instr_label, fill="x")
+            except Exception:
+                # fallback packing order
+                self.voice_label.pack(anchor="w", pady=(4,0))
+                self.voice_cmb.pack(fill="x")
+                self.instr_label.pack(anchor="w", pady=(4,0))
+                self.instructions_entry.pack(fill="x")
+
+        def hide_tts_widgets():
+            try:
+                self.tts_info.pack_forget()
+            except Exception:
+                pass
+            for w in (self.voice_label, self.voice_cmb, self.instr_label, self.instructions_entry):
+                try:
+                    w.pack_forget()
+                except Exception:
+                    pass
+
+        if self.sound_var.get() == "Text to speech":
+            show_tts_widgets()
+        else:
+            hide_tts_widgets()
+
+        def on_sound_change(event=None):
+            if self.sound_var.get() == "Text to speech":
+                show_tts_widgets()
+            else:
+                hide_tts_widgets()
+        cmb_sound.bind("<<ComboboxSelected>>", on_sound_change)
+
         ttk.Label(frame, text="Silent Duration:").pack(anchor="w", pady=(10,0))
         self.silent_var = tk.StringVar()
         silent_values = ["5m","10m","30m","1h","2h","4h","8h","12h","24h"]
@@ -423,6 +504,14 @@ class ConfigWindow:
             CONFIG["urls"] = [line.strip() for line in self.text.get("1.0", "end").split("\n") if line.strip()]
             CONFIG["notify_timeout"] = self.label_to_seconds(self.timeout_var.get())
             CONFIG["silent_time"] = self.label_to_minutes(self.silent_var.get())
+            CONFIG["ignore_ssl_errors"] = bool(self.ignore_var.get())
+            # map display back to key
+            selected_display = self.sound_var.get()
+            selected_key = next((k for d,k in self._sound_options if d == selected_display), "windows")
+            CONFIG["sound"] = selected_key
+            # save TTS-specific settings
+            CONFIG["voice"] = self.voice_var.get()
+            CONFIG["instructions"] = self.instructions_var.get()
             save_config()
             log("Config window saved. urls=", len(CONFIG["urls"]), "timeout=", CONFIG["notify_timeout"], "silent=", CONFIG["silent_time"])
         except:
