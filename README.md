@@ -1,120 +1,136 @@
 # gotify-win-desktop
 
-A simple Windows tray client for [Gotify](https://gotify.net) that listens to one or more Gotify WebSocket streams and shows native Windows notifications. It includes a tray menu, a configuration window, silent mode, and quick links to your Gotify servers.
+A lightweight Windows tray client for Gotify that listens to one or more Gotify WebSocket streams and shows native Windows notifications.
 
-## Features
-- **Tray app:** Runs in the Windows system tray via `pystray`.
-- **Multiple servers:** Connect to multiple Gotify streams in parallel.
-- **Notifications:** Uses Windows notifications; `title` and `message` come from the Gotify payload.
-- **Silent mode:** Temporarily suppress notifications for a chosen duration.
-- **Config window:** Edit URLs and timeouts; see connection status (green/yellow/red).
-- **Servers menu:** Quick open to your Gotify web UI.
+This repository contains a small Python app that is typically packaged into a single EXE using PyInstaller (see `build.ps1`). It targets Windows 10/11 and uses the Windows native toast API for notifications.
 
-## Requirements
-- **Windows**
-- **Python 3.11+** (3.11 or newer)
+**Note:** This README has been updated to match the current `main.py` implementation (config names, CLI flags, TTS behavior, and install/uninstall flow).
 
-## Quick Start (venv)
-Use a virtual environment to run the app without affecting your system Python.
+**Release:** [GotifyClient Windows](https://github.com/derDere/gotify-win-desktop/releases)
+
+**Highlights**
+- Tray app using `pystray` with a configuration window (Tkinter).
+- Connects to multiple Gotify WebSocket streams concurrently.
+- Native Windows toast notifications via `winotify`.
+- Optional sound behavior: system sound (default), play a custom MP3, or use OpenAI TTS to read notifications aloud.
+- Silent mode to temporarily suppress toasts while keeping connections active.
+- Simple installer (`--install`) and uninstaller (`--uninstall`) to place the EXE under `%LOCALAPPDATA%\\Programs\\GotifyWinClient` and add/remove a Startup shortcut.
+
+Supported Python packages are listed in `requirements.txt` (pystray, websocket-client, plyer, pillow, pyyaml, winotify, pygame, openai, numpy).
+
+Requirements
+
+- **Windows 10 or 11**
+- **Python 3.11+** (development/install requires a compatible Python version)
+
+Quick Start (development)
+
+- Create and activate a virtual environment (PowerShell):
 
 ```powershell
-# From the repo root
 python -m venv .venv
-
-# Activate the venv (PowerShell)
-. .\.venv\Scripts\Activate.ps1
-
-# Install dependencies
+. .\\.venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
-
-# Run the app
-python .\main.py
+python .\\main.py
 ```
 
-After launch, the app places an icon in the system tray and starts listening to the configured Gotify servers.
+When run, the app places an icon in the system tray and opens a configuration window from the tray menu.
 
-## Configuration
-The app reads and writes its settings in `~/gotify-win-client-config.yaml` in your user profile.
+Configuration
 
-Keys:
-- `urls`: List of Gotify WebSocket stream URLs. Each line can optionally start with a name in square brackets.
-	- Format examples:
-		- `wss://your.gotify.server/stream?token=YOUR_CLIENT_TOKEN`
-		- `[Work]wss://gotify.example.com/stream?token=ABC123`
-- `notify_timeout`: Notification display duration in seconds.
-- `silent_time`: Silent-mode duration in minutes.
-- `ignore_ssl_errors` (optional): If set to `true`, SSL certificate verification is disabled for WebSocket connections.
+- The app stores user configuration in `~/gotify-win-client-config.yaml` (user home directory). If this file is missing, the app will copy the repository `config.yaml` (if present) to that location.
 
-You can edit `~/gotify-win-client-config.yaml` manually or use the tray’s **Show Window** to open the configuration UI:
-- Edit URLs (one per line; optional `[Name]` prefix).
-- Pick notification timeout and silent duration from presets.
-- Status dot shows aggregate connection health:
-	- Green: all connections online
-	- Yellow: some online
-	- Red: none online
+- Config keys used by the app (defaults shown in `main.py`):
+	- `urls` (list): WebSocket stream URLs. Each entry may optionally include a display name prefix in square brackets: `[Work]wss://gotify.example/stream?token=...`
+	- `notify_timeout` (int): Notification display timeout in seconds (default: 30).
+	- `silent_time` (int): Silent mode duration in minutes when enabling from the tray (default: 10).
+	- `ignore_ssl_errors` (bool): If true, SSL certificate verification is disabled for WebSocket connections.
+	- `sound` (string): One of `windows` (default), `sound_file`, or `tts`.
+	- `voice` (string): Voice name used by TTS (when `sound` is `tts`).
+	- `instructions` (string): Spoken instructions / voice style for TTS.
 
-## Tray Menu
-- **Show Window:** Open the configuration window.
-- **Silent / Silent Off:** Toggle silent mode. When silent is active, notifications are suppressed until the shown time; connections stay active.
-- **Servers:** Lists detected server hosts from your URLs; opens `https://{host}` in your default browser.
-- **Exit:** Stop the app and remove the tray icon.
+URLs format examples
 
-## Tokens
-Use a **Gotify client token** for each server stream (`/stream?token=...`). Users familiar with Gotify will know how to create and manage tokens.
+- Simple URL (no display name):
+	- `wss://your.gotify.server/stream?token=CLIENT_TOKEN`
 
-## Tips
-- Multiple servers are supported; add as many `urls` as you need.
-- If your server uses a self-signed certificate and you trust it, set `ignore_ssl_errors: true` (not recommended for production).
+- With display name (shown in tray/status):
+	- `[Home]wss://gotify.example.com/stream?token=ABC123`
 
-## Build
-Use the provided PowerShell script to build a single-file Windows EXE with PyInstaller.
+Tray and UI
+
+- Right-click the tray icon to open the menu. Menu entries:
+	- Show Window — open the configuration UI.
+	- Silent — enable silent mode for the configured `silent_time` minutes.
+	- Silent Off — immediately clear silent mode.
+	- Servers — quick links to the detected server hosts (opens https://{host}).
+	- Exit — stop the app and remove the tray icon.
+
+- The configuration window lets you edit `urls`, choose notification timeout, toggle `ignore_ssl_errors`, select sound behavior, and set TTS voice/instructions.
+
+Text-to-Speech (TTS)
+
+- When `sound` is set to `tts`, the app uses OpenAI TTS to synthesize notification audio and caches MP3 files under a `sounds_cache` directory next to the EXE (or next to the script in development).
+
+- Requirements for TTS:
+	- Set the `OPENAI_API_KEY` environment variable with a valid OpenAI API key before running the app.
+
+- TTS-related config keys:
+	- `voice` — e.g., `coral` (default), `alloy`, `ash`, `ballad`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`.
+	- `instructions` — text describing speaking style or instructions for the voice.
+
+TTS examples (suggested `instructions` values)
+
+- Concise, friendly assistant:
+	- "Speak in a friendly, conversational tone with clear enunciation. Keep it brief."
+
+- Formal briefing:
+	- "Read aloud in a clear, neutral voice as if presenting an alert. Use proper nouns and spell out acronyms."
+
+- Energetic notification:
+	- "Speak in an upbeat, energetic tone with slight emphasis on short phrases."
+
+- Calm, soft voice:
+	- "Speak softly and slowly with a calm, reassuring tone."
+
+Build / Packaging
+
+- The provided `build.ps1` script creates a Windows venv, installs dependencies, and builds a single-file, windowed EXE using PyInstaller (name: `GotifyClient.exe`). The script attempts to include `notify_client.ico` and `sound_file.mp3` as data files.
 
 ```powershell
-# From repo root
+# From the repo root (PowerShell)
 ./build.ps1
 ```
 
-The output appears under `dist/`. The EXE uses the tray icon from `notify_client.ico`.
+Install / Uninstall (no admin required)
 
-## Install (no admin)
-After building, the output is `GotifyClient.exe` in `dist/`.
-Run it with `--install` to copy it to your user programs folder and add a Startup shortcut.
+- After building, run the EXE with `--install` to copy the EXE and assets to `%LOCALAPPDATA%\\Programs\\GotifyWinClient` and create a Startup shortcut.
 
 ```powershell
-# From dist
+# From dist folder (where GotifyClient.exe is located)
 ./GotifyClient.exe --install
 ```
 
-This places `GotifyClient.exe` in `%LOCALAPPDATA%\Programs\GotifyWinClient` and creates `GotifyClient.lnk` in your Startup folder (`shell:startup`).
-
-The installer also places `notify_client.ico` next to the EXE so the shortcut shows the right icon.
-
-## Uninstall
-Remove from Programs and Startup:
+- To remove the installed files and the Startup shortcut:
 
 ```powershell
 ./GotifyClient.exe --uninstall
 ```
 
-## Setup Helper Script
-The build process copies `setup.ps1` into `dist/` next to `GotifyClient.exe`.
+Notes and differences from older README
 
-Run it for a guided install/uninstall:
+- The config filename is `gotify-win-client-config.yaml` in the user's home directory (not `~/gotify.yaml`).
+- The tray app uses `winotify` for native Windows toasts (ensure you're on Windows 10/11).
+- TTS uses OpenAI's AsyncOpenAI TTS API and requires `OPENAI_API_KEY` (set as an environment variable).
+- The app supports `sound_file.mp3` next to the EXE for custom sound playback; place your MP3 in the same folder, or configure the `sound` key.
 
-```powershell
-./setup.ps1
-```
+Troubleshooting
 
-Behavior:
-- If already installed, prompts to uninstall.
-- If not installed, performs install (`--install`).
+- If notifications are not visible, check Windows Focus Assist / Do Not Disturb settings.
+- If WebSocket connections repeatedly fail due to TLS/SSL, you can toggle `ignore_ssl_errors` to true (only for trusted/self-signed servers).
+- If TTS fails, confirm `OPENAI_API_KEY` is set and your network allows outgoing connections to OpenAI.
 
-Note: This app now uses `winotify` for native Windows toasts. `build.ps1` installs dependencies from `requirements.txt` which includes `winotify`. If `pip install -r requirements.txt` fails to find `winotify`, ensure your Python/pip are up-to-date and you are on a supported Windows environment (Windows 10/11). If you still see issues, run the setup and build on a clean Python 3.11 virtual environment.
+License
 
-## Troubleshooting
-- If you see `401 Unauthorized`, the app backs off reconnect attempts automatically.
-- Notifications rely on Windows; ensure Focus Assist / Do Not Disturb is off if you don’t see toasts.
-
-## License
-GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE). Project name: gotify-win-desktop.
+GNU General Public License v3.0 (GPL-3.0). See LICENSE.
 
