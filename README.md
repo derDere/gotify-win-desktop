@@ -6,9 +6,9 @@ This repository contains a small Python app that is typically packaged into a si
 
 **Note:** This README has been updated to match the current `main.py` implementation (config names, CLI flags, TTS behavior, and install/uninstall flow).
 
-**Release:** [GotifyClient Windows](https://github.com/derDere/gotify-win-desktop/releases)
+## **Release:** [GotifyClient Windows](https://github.com/derDere/gotify-win-desktop/releases)
 
-**Highlights**
+## **Highlights**
 - Tray app using `pystray` with a configuration window (Tkinter).
 - Connects to multiple Gotify WebSocket streams concurrently.
 - Native Windows toast notifications via `winotify`.
@@ -18,12 +18,12 @@ This repository contains a small Python app that is typically packaged into a si
 
 Supported Python packages are listed in `requirements.txt` (pystray, websocket-client, plyer, pillow, pyyaml, winotify, pygame, openai, numpy).
 
-Requirements
+## Requirements
 
 - **Windows 10 or 11**
 - **Python 3.11+** (development/install requires a compatible Python version)
 
-Quick Start (development)
+## Quick Start (development)
 
 - Create and activate a virtual environment (PowerShell):
 
@@ -36,7 +36,7 @@ python .\\main.py
 
 When run, the app places an icon in the system tray and opens a configuration window from the tray menu.
 
-Configuration
+## Configuration
 
 - The app stores user configuration in `~/gotify-win-client-config.yaml` (user home directory). If this file is missing, the app will copy the repository `config.yaml` (if present) to that location.
 
@@ -49,7 +49,7 @@ Configuration
 	- `voice` (string): Voice name used by TTS (when `sound` is `tts`).
 	- `instructions` (string): Spoken instructions / voice style for TTS.
 
-URLs format examples
+### URLs format examples
 
 - Simple URL (no display name):
 	- `wss://your.gotify.server/stream?token=CLIENT_TOKEN`
@@ -57,7 +57,7 @@ URLs format examples
 - With display name (shown in tray/status):
 	- `[Home]wss://gotify.example.com/stream?token=ABC123`
 
-Tray and UI
+### Tray and UI
 
 - Right-click the tray icon to open the menu. Menu entries:
 	- Show Window — open the configuration UI.
@@ -68,7 +68,7 @@ Tray and UI
 
 - The configuration window lets you edit `urls`, choose notification timeout, toggle `ignore_ssl_errors`, select sound behavior, and set TTS voice/instructions.
 
-Text-to-Speech (TTS)
+### Text-to-Speech (TTS)
 
 - When `sound` is set to `tts`, the app uses OpenAI TTS to synthesize notification audio and caches MP3 files under a `sounds_cache` directory next to the EXE (or next to the script in development).
 
@@ -79,7 +79,7 @@ Text-to-Speech (TTS)
 	- `voice` — e.g., `coral` (default), `alloy`, `ash`, `ballad`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`.
 	- `instructions` — text describing speaking style or instructions for the voice.
 
-TTS examples (suggested `instructions` values)
+### TTS examples (suggested `instructions` values)
 
 - Concise, friendly assistant:
 	- "Speak in a friendly, conversational tone with clear enunciation. Keep it brief."
@@ -93,7 +93,7 @@ TTS examples (suggested `instructions` values)
 - Calm, soft voice:
 	- "Speak softly and slowly with a calm, reassuring tone."
 
-Build / Packaging
+## Build / Packaging
 
 - The provided `build.ps1` script creates a Windows venv, installs dependencies, and builds a single-file, windowed EXE using PyInstaller (name: `GotifyClient.exe`). The script attempts to include `notify_client.ico` and `sound_file.mp3` as data files.
 
@@ -102,7 +102,7 @@ Build / Packaging
 ./build.ps1
 ```
 
-Install / Uninstall (no admin required)
+## Install / Uninstall (no admin required)
 
 - After building, run the EXE with `--install` to copy the EXE and assets to `%LOCALAPPDATA%\\Programs\\GotifyWinClient` and create a Startup shortcut.
 
@@ -117,20 +117,20 @@ Install / Uninstall (no admin required)
 ./GotifyClient.exe --uninstall
 ```
 
-Notes and differences from older README
+## Notes and differences from older README
 
 - The config filename is `gotify-win-client-config.yaml` in the user's home directory (not `~/gotify.yaml`).
 - The tray app uses `winotify` for native Windows toasts (ensure you're on Windows 10/11).
 - TTS uses OpenAI's AsyncOpenAI TTS API and requires `OPENAI_API_KEY` (set as an environment variable).
 - The app supports `sound_file.mp3` next to the EXE for custom sound playback; place your MP3 in the same folder, or configure the `sound` key.
 
-Troubleshooting
+## Troubleshooting
 
 - If notifications are not visible, check Windows Focus Assist / Do Not Disturb settings.
 - If WebSocket connections repeatedly fail due to TLS/SSL, you can toggle `ignore_ssl_errors` to true (only for trusted/self-signed servers).
 - If TTS fails, confirm `OPENAI_API_KEY` is set and your network allows outgoing connections to OpenAI.
 
-License
+## License
 
-GNU General Public License v3.0 (GPL-3.0). See LICENSE.
+GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE).
 
