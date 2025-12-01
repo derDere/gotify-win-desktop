@@ -208,3 +208,6 @@ __marimo__/
 
 # config
 config.yaml
+
+# data
+sounds_cache/

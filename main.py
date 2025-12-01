@@ -35,6 +35,10 @@ import argparse
 from winotify import Notification, audio
 import ctypes
 import json
+import asyncio
+import re
+import hashlib
+from openai import AsyncOpenAI
 import pygame
 
 # Initialize pygame mixer early so playback is ready when needed
@@ -295,8 +299,88 @@ def parse_gotify_message(msg):
 
 
 def text_to_speech(text: str):
-    # Stub for text-to-speech. Implement TTS playback here later.
-    print("TTS:", text)
+    # Create a sanitized filename from the text and cache MP3s next to the exe
+    voice = CONFIG.get('voice', 'coral')
+    instructions = CONFIG.get('instructions', 'Speak in a cheerful and positive tone.')
+
+    # Determine base directory (installed exe dir when frozen)
+    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+    cache_dir = os.path.join(base_dir, 'sounds_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # Sanitize filename: remove all non-word characters
+    name = re.sub(r'\W+', '', text)
+    if not name:
+        # fallback to hash when name becomes empty or too long
+        name = hashlib.sha256(text.encode('utf-8')).hexdigest()
+    # limit length to reasonable filename size
+    name = name[:200]
+    file_name = f"{name}.mp3"
+    out_path = os.path.join(cache_dir, file_name)
+
+    async def _fetch_and_save():
+        client = AsyncOpenAI()
+        # Use streaming response to receive audio bytes and write to file
+        async with client.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=text,
+            instructions=instructions,
+            response_format="mp3",
+        ) as response:
+            # Open file for writing binary
+            with open(out_path, 'wb') as f:
+                # First try: async iteration if response supports it
+                if hasattr(response, '__aiter__'):
+                    async for chunk in response:
+                        if isinstance(chunk, (bytes, bytearray)):
+                            f.write(chunk)
+                        else:
+                            data = getattr(chunk, 'data', None) or getattr(chunk, 'audio', None) or getattr(chunk, 'raw', None)
+                            if isinstance(data, (bytes, bytearray)):
+                                f.write(data)
+                else:
+                    # Try common coroutine-style readers
+                    if hasattr(response, 'read') and asyncio.iscoroutinefunction(response.read):
+                        data = await response.read()
+                        if isinstance(data, (bytes, bytearray)):
+                            f.write(data)
+                    elif hasattr(response, 'get_bytes') and asyncio.iscoroutinefunction(response.get_bytes):
+                        data = await response.get_bytes()
+                        if isinstance(data, (bytes, bytearray)):
+                            f.write(data)
+                    elif hasattr(response, 'iter_bytes'):
+                        # iter_bytes might be an async iterator
+                        itr = response.iter_bytes
+                        if hasattr(itr, '__aiter__'):
+                            async for chunk in itr():
+                                if isinstance(chunk, (bytes, bytearray)):
+                                    f.write(chunk)
+                        else:
+                            for chunk in itr():
+                                if isinstance(chunk, (bytes, bytearray)):
+                                    f.write(chunk)
+                    else:
+                        # Last resort: try to access common attributes
+                        data = getattr(response, 'audio', None) or getattr(response, 'data', None) or getattr(response, 'raw', None) or getattr(response, 'content', None)
+                        if isinstance(data, (bytes, bytearray)):
+                            f.write(data)
+                        elif data is not None:
+                            try:
+                                # attempt to turn into bytes
+                                f.write(bytes(data))
+                            except Exception:
+                                pass
+
+    # Only fetch if file does not exist
+    if not os.path.exists(out_path):
+        asyncio.run(_fetch_and_save())
+
+    # Play the cached mp3 using pygame
+    # Stop any playing audio and start the new file
+    pygame.mixer.music.stop()
+    pygame.mixer.music.load(out_path)
+    pygame.mixer.music.play()
 
 
 def notify(text, title="Gotify", app_name="Gotify Client", timeout=30):

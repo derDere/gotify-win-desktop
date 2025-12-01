@@ -5,3 +5,5 @@ pillow
 pyyaml
 winotify
 pygame
+openai
+numpy
