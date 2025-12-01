@@ -1,4 +1,4 @@
-# gotify-win-desktop
+# Gotify Windows Desktop Client
 
 A lightweight Windows tray client for Gotify that listens to one or more Gotify WebSocket streams and shows native Windows notifications.
 
