@@ -219,7 +219,7 @@ def ws_thread_func(url, display):
             except Exception as e:
                 log("Token parse warning:", repr(e))
 
-            sleep_seconds = 10
+            sleep_seconds = 2
 
             def on_message(ws, msg):
                 try:
@@ -379,8 +379,24 @@ def text_to_speech(text: str):
     # Play the cached mp3 using pygame
     # Stop any playing audio and start the new file
     pygame.mixer.music.stop()
+    pygame.mixer.music.unload()
     pygame.mixer.music.load(out_path)
     pygame.mixer.music.play()
+    # Schedule an unload after playback finishes to release file handle
+    def _wait_and_unload(path):
+        try:
+            # poll while music is playing
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+            try:
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+        except Exception:
+            pass
+    t = threading.Thread(target=_wait_and_unload, args=(out_path,), daemon=True)
+    t.start()
 
 
 def notify(text, title="Gotify", app_name="Gotify Client", timeout=30):
@@ -420,8 +436,30 @@ def play_sound():
         return
     # Use pygame mixer.music to stream and play the MP3 (reliable repeated playback)
     # Load and play (non-blocking)
+    # Stop/unload previous audio then load and play new sound
+    try:
+        pygame.mixer.music.stop()
+    except Exception:
+        pass
+    try:
+        pygame.mixer.music.unload()
+    except Exception:
+        pass
     pygame.mixer.music.load(path)
     pygame.mixer.music.play()
+    # schedule unload when finished
+    def _wait_and_unload():
+        try:
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+            try:
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+        except Exception:
+            pass
+    threading.Thread(target=_wait_and_unload, daemon=True).start()
 
 
 def restart_connections():
@@ -579,6 +617,9 @@ class ConfigWindow:
         self.status_canvas.pack(side="left", padx=(8,0))
         test_btn = ttk.Button(status_row, text="Test", command=self.on_test_notify)
         test_btn.pack(side="left", padx=(12,0))
+        # Clear sound cache button
+        clear_cache_btn = ttk.Button(status_row, text="Clear Sound Cache", command=self.on_clear_sound_cache)
+        clear_cache_btn.pack(side="left", padx=(12,0))
         self.status_canvas.bind("<Enter>", self.tooltip_enter)
         self.status_canvas.bind("<Leave>", self.tooltip_leave)
 
@@ -590,6 +631,13 @@ class ConfigWindow:
 
     def on_test_notify(self):
         try:
+            # Apply current UI values and persist so test uses the latest settings
+            try:
+                self.apply_ui_to_config()
+                save_config()
+            except Exception:
+                log('Failed to apply UI to config before test:', traceback.format_exc())
+
             notify(text="This is a test notification", title="Gotify Test", app_name="Notify Client", timeout=30)
         except Exception:
             messagebox.showerror("Error", traceback.format_exc())
@@ -647,17 +695,7 @@ class ConfigWindow:
 
     def on_close(self):
         try:
-            CONFIG["urls"] = [line.strip() for line in self.text.get("1.0", "end").split("\n") if line.strip()]
-            CONFIG["notify_timeout"] = self.label_to_seconds(self.timeout_var.get())
-            CONFIG["silent_time"] = self.label_to_minutes(self.silent_var.get())
-            CONFIG["ignore_ssl_errors"] = bool(self.ignore_var.get())
-            # map display back to key
-            selected_display = self.sound_var.get()
-            selected_key = next((k for d,k in self._sound_options if d == selected_display), "windows")
-            CONFIG["sound"] = selected_key
-            # save TTS-specific settings
-            CONFIG["voice"] = self.voice_var.get()
-            CONFIG["instructions"] = self.instructions_var.get()
+            self.apply_ui_to_config()
             save_config()
             log("Config window saved. urls=", len(CONFIG["urls"]), "timeout=", CONFIG["notify_timeout"], "silent=", CONFIG["silent_time"])
         except:
@@ -667,6 +705,48 @@ class ConfigWindow:
         update_tray_menu(self.icon_ref)
         log("Reloaded connections and tray menu after config change")
         self.root.destroy()
+
+    def apply_ui_to_config(self):
+        """Apply current UI widget values into the global CONFIG dict (without saving)."""
+        CONFIG["urls"] = [line.strip() for line in self.text.get("1.0", "end").split("\n") if line.strip()]
+        CONFIG["notify_timeout"] = self.label_to_seconds(self.timeout_var.get())
+        CONFIG["silent_time"] = self.label_to_minutes(self.silent_var.get())
+        CONFIG["ignore_ssl_errors"] = bool(self.ignore_var.get())
+        # map display back to key
+        selected_display = self.sound_var.get()
+        selected_key = next((k for d,k in self._sound_options if d == selected_display), "windows")
+        CONFIG["sound"] = selected_key
+        # save TTS-specific settings
+        CONFIG["voice"] = self.voice_var.get()
+        CONFIG["instructions"] = self.instructions_var.get()
+
+    def on_clear_sound_cache(self):
+        try:
+            # Ensure any playing audio is stopped and unloaded so files aren't locked
+            try:
+                pygame.mixer.music.stop()
+            except Exception:
+                pass
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+
+            base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+            cache_dir = os.path.join(base_dir, 'sounds_cache')
+            removed = 0
+            if os.path.isdir(cache_dir):
+                for fname in os.listdir(cache_dir):
+                    if fname.lower().endswith('.mp3'):
+                        p = os.path.join(cache_dir, fname)
+                        try:
+                            os.remove(p)
+                            removed += 1
+                        except Exception:
+                            log('Failed to remove cached file:', p, traceback.format_exc())
+            messagebox.showinfo('Sound Cache', f'Removed {removed} mp3 files from cache.')
+        except Exception:
+            messagebox.showerror('Error', traceback.format_exc())
 
     @staticmethod
     def seconds_to_label(sec):
