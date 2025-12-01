@@ -14,9 +14,36 @@ from urllib.parse import urlparse, parse_qs
 import traceback
 import os
 import ssl
+import sys
+import shutil
+import subprocess
+import argparse
 
-CONFIG_FILE = "config.yaml"
+def get_config_path():
+    try:
+        home = os.path.expanduser("~")
+        return os.path.join(home, "gotify-win-client-config.yaml")
+    except Exception:
+        return "gotify-win-client-config.yaml"
+
+CONFIG_FILE = get_config_path()
 ICON_FILE = "notify_client.ico"
+
+def get_icon_path():
+    # When bundled with PyInstaller, data files are under sys._MEIPASS
+    try:
+        if hasattr(sys, "_MEIPASS"):
+            p = os.path.join(sys._MEIPASS, ICON_FILE)
+            if os.path.exists(p):
+                return p
+    except Exception:
+        pass
+    # Fallback to repo root or current working dir
+    repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), ICON_FILE)
+    if os.path.exists(repo):
+        return repo
+    cwd = os.path.join(os.getcwd(), ICON_FILE)
+    return cwd
 
 # global runtime state
 ws_threads = []
@@ -55,6 +82,11 @@ def load_config():
 
 
 def save_config():
+    # ensure parent directory exists if user changed to a path with folders
+    try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    except Exception:
+        pass
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(CONFIG, f)
     log("Config saved:", CONFIG_FILE)
@@ -424,15 +456,114 @@ def exit_app(icon):
 
 
 def run_tray():
-    image = Image.open(ICON_FILE)
+    icon_path = get_icon_path()
+    image = Image.open(icon_path)
     icon = pystray.Icon("notify_client", image, "Notify Client")
     update_tray_menu(icon)
     icon.run()
     log("Tray icon started")
 
 
+def install_to_user_programs_and_startup():
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if not local_appdata:
+            raise RuntimeError("LOCALAPPDATA not found")
+        target_dir = os.path.join(local_appdata, "Programs", "GotifyWinClient")
+        os.makedirs(target_dir, exist_ok=True)
+
+        # Source exe: when packaged, sys.executable is the exe
+        src = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+        exe_name = "GotifyClient.exe"
+        dst_exe = os.path.join(target_dir, exe_name)
+        shutil.copy2(src, dst_exe)
+        log("Copied executable to:", dst_exe)
+
+        # Copy icon into install folder (from bundled data or repo)
+        try:
+            src_icon = get_icon_path()
+            dst_icon = os.path.join(target_dir, ICON_FILE)
+            if os.path.exists(src_icon):
+                shutil.copy2(src_icon, dst_icon)
+                log("Copied icon to:", dst_icon)
+        except Exception:
+            log("Icon copy failed:", traceback.format_exc())
+
+        # Create Startup shortcut via PowerShell (no admin required)
+        # Using WScript.Shell COM to generate .lnk
+        ps = (
+            "$startup = [Environment]::GetFolderPath('Startup');"
+            f"$target = '{dst_exe.replace('\\', '/') }';"
+            "$lnk = Join-Path $startup 'GotifyClient.lnk';"
+            "$ws = New-Object -ComObject WScript.Shell;"
+            "$sc = $ws.CreateShortcut($lnk);"
+            "$sc.TargetPath = $target;"
+            "$sc.WorkingDirectory = (Split-Path $target);"
+            "$sc.WindowStyle = 7;"
+            "$iconFile = Join-Path (Split-Path $target) 'notify_client.ico';"
+            "if (Test-Path $iconFile) { $sc.IconLocation = $iconFile } else { $sc.IconLocation = $target }"
+            "$sc.Save();"
+        )
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], check=False)
+        log("Startup shortcut created.")
+        messagebox.showinfo("Installation", "Installed GotifyClient.exe to AppData\\Local\\Programs and added Startup shortcut.")
+    except Exception:
+        messagebox.showerror("Installation failed", traceback.format_exc())
+
+
+def uninstall_from_user_programs_and_startup():
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if not local_appdata:
+            raise RuntimeError("LOCALAPPDATA not found")
+        target_dir = os.path.join(local_appdata, "Programs", "GotifyWinClient")
+        exe_path = os.path.join(target_dir, "GotifyClient.exe")
+        icon_path = os.path.join(target_dir, ICON_FILE)
+
+        # Remove Startup shortcut
+        ps_remove = (
+            "$startup = [Environment]::GetFolderPath('Startup');"
+            "$lnk = Join-Path $startup 'GotifyClient.lnk';"
+            "if (Test-Path $lnk) { Remove-Item $lnk -Force }"
+        )
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_remove], check=False)
+
+        # Remove exe and icon
+        for p in [exe_path, icon_path]:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+                    log("Removed:", p)
+            except Exception:
+                log("Failed to remove:", p)
+
+        # Remove folder if empty
+        try:
+            if os.path.isdir(target_dir) and not os.listdir(target_dir):
+                os.rmdir(target_dir)
+                log("Removed empty folder:", target_dir)
+        except Exception:
+            pass
+
+        messagebox.showinfo("Uninstall", "Removed GotifyClient from Programs and Startup.")
+    except Exception:
+        messagebox.showerror("Uninstall failed", traceback.format_exc())
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Gotify Windows Tray Client")
+    parser.add_argument("--install", action="store_true", help="Install to user Programs and add Startup shortcut")
+    parser.add_argument("--uninstall", action="store_true", help="Remove from user Programs and Startup")
+    args = parser.parse_args()
+
     log("Notify Client starting...")
+    if args.install:
+        install_to_user_programs_and_startup()
+        return
+    if args.uninstall:
+        uninstall_from_user_programs_and_startup()
+        return
+
     load_config()
     restart_connections()
     run_tray()

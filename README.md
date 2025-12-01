@@ -34,7 +34,7 @@ python .\main.py
 After launch, the app places an icon in the system tray and starts listening to the configured Gotify servers.
 
 ## Configuration
-The app reads and writes its settings in `config.yaml` in the repo root.
+The app reads and writes its settings in `~/gotify-win-client-config.yaml` in your user profile.
 
 Keys:
 - `urls`: List of Gotify WebSocket stream URLs. Each line can optionally start with a name in square brackets.
@@ -45,7 +45,7 @@ Keys:
 - `silent_time`: Silent-mode duration in minutes.
 - `ignore_ssl_errors` (optional): If set to `true`, SSL certificate verification is disabled for WebSocket connections.
 
-You can edit `config.yaml` manually or use the tray’s **Show Window** to open the configuration UI:
+You can edit `~/gotify-win-client-config.yaml` manually or use the tray’s **Show Window** to open the configuration UI:
 - Edit URLs (one per line; optional `[Name]` prefix).
 - Pick notification timeout and silent duration from presets.
 - Status dot shows aggregate connection health:
@@ -65,6 +65,36 @@ Use a **Gotify client token** for each server stream (`/stream?token=...`). User
 ## Tips
 - Multiple servers are supported; add as many `urls` as you need.
 - If your server uses a self-signed certificate and you trust it, set `ignore_ssl_errors: true` (not recommended for production).
+
+## Build
+Use the provided PowerShell script to build a single-file Windows EXE with PyInstaller.
+
+```powershell
+# From repo root
+./build.ps1
+```
+
+The output appears under `dist/`. The EXE uses the tray icon from `notify_client.ico`.
+
+## Install (no admin)
+After building, the output is `GotifyClient.exe` in `dist/`.
+Run it with `--install` to copy it to your user programs folder and add a Startup shortcut.
+
+```powershell
+# From dist
+./GotifyClient.exe --install
+```
+
+This places `GotifyClient.exe` in `%LOCALAPPDATA%\Programs\GotifyWinClient` and creates `GotifyClient.lnk` in your Startup folder (`shell:startup`).
+
+The installer also places `notify_client.ico` next to the EXE so the shortcut shows the right icon.
+
+## Uninstall
+Remove from Programs and Startup:
+
+```powershell
+./GotifyClient.exe --uninstall
+```
 
 ## Troubleshooting
 - If you see `401 Unauthorized`, the app backs off reconnect attempts automatically.
