@@ -44,4 +44,14 @@ $PyInstallerArgs = @(
 
 & $PythonExe -m PyInstaller @PyInstallerArgs
 
+Write-Host 'Copying setup.ps1 into dist...' -ForegroundColor Cyan
+$SetupSrc = Join-Path $RepoRoot 'setup.ps1'
+$DistDir = Join-Path $RepoRoot 'dist'
+if ((Test-Path $SetupSrc) -and (Test-Path $DistDir)) {
+    Copy-Item $SetupSrc -Destination (Join-Path $DistDir 'setup.ps1') -Force
+    Write-Host 'setup.ps1 copied.' -ForegroundColor Green
+} else {
+    Write-Host 'setup.ps1 copy skipped (source or dist missing).' -ForegroundColor Yellow
+}
+
 Write-Host 'Build complete. See dist/ for output.' -ForegroundColor Green

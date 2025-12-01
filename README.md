@@ -96,6 +96,19 @@ Remove from Programs and Startup:
 ./GotifyClient.exe --uninstall
 ```
 
+## Setup Helper Script
+The build process copies `setup.ps1` into `dist/` next to `GotifyClient.exe`.
+
+Run it for a guided install/uninstall:
+
+```powershell
+./setup.ps1
+```
+
+Behavior:
+- If already installed, prompts to uninstall.
+- If not installed, performs install (`--install`).
+
 ## Troubleshooting
 - If you see `401 Unauthorized`, the app backs off reconnect attempts automatically.
 - Notifications rely on Windows; ensure Focus Assist / Do Not Disturb is off if you don’t see toasts.
