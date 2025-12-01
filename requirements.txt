@@ -1,0 +1,5 @@
+pystray
+websocket-client
+plyer
+pillow
+pyyaml
