@@ -4,3 +4,4 @@ plyer
 pillow
 pyyaml
 winotify
+pygame

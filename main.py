@@ -1,3 +1,17 @@
+"""
+Gotify Windows Tray Client
+
+This application targets Microsoft Windows (10/11). The packaged EXE
+uses Windows native notifications and expects Windows-specific
+dependencies to be available in the build/runtime environment.
+
+Required Windows dependencies (ensure these are installed before building):
+- winotify  (for native Windows toasts)
+
+The build process (build.ps1) installs requirements from
+`requirements.txt` and uses PyInstaller to bundle assets.
+"""
+
 import threading
 import time
 import tkinter as tk
@@ -18,6 +32,13 @@ import sys
 import shutil
 import subprocess
 import argparse
+from winotify import Notification, audio
+import ctypes
+import json
+import pygame
+
+# Initialize pygame mixer early so playback is ready when needed
+pygame.mixer.init()
 
 def get_config_path():
     try:
@@ -28,6 +49,7 @@ def get_config_path():
 
 CONFIG_FILE = get_config_path()
 ICON_FILE = "notify_client.ico"
+SOUND_FILE = "sound_file.mp3"
 
 def get_icon_path():
     # When bundled with PyInstaller, data files are under sys._MEIPASS
@@ -43,6 +65,23 @@ def get_icon_path():
     if os.path.exists(repo):
         return repo
     cwd = os.path.join(os.getcwd(), ICON_FILE)
+    return cwd
+
+
+def get_sound_path():
+    # When bundled with PyInstaller, data files are under sys._MEIPASS
+    try:
+        if hasattr(sys, "_MEIPASS"):
+            p = os.path.join(sys._MEIPASS, SOUND_FILE)
+            if os.path.exists(p):
+                return p
+    except Exception:
+        pass
+    # Fallback to repo root or current working dir
+    repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), SOUND_FILE)
+    if os.path.exists(repo):
+        return repo
+    cwd = os.path.join(os.getcwd(), SOUND_FILE)
     return cwd
 
 
@@ -255,27 +294,50 @@ def parse_gotify_message(msg):
     return title, message
 
 
+def text_to_speech(text: str):
+    # Stub for text-to-speech. Implement TTS playback here later.
+    print("TTS:", text)
+
+
 def notify(text, title="Gotify", app_name="Gotify Client", timeout=30):
-        # This application requires WinRT to show Windows native toasts.
+        # Always attempt the native toast (Windows only)
         if sys.platform != 'win32':
-                log('notify() called on non-Windows platform')
-                return
-
-        try:
-            from winotify import Notification, audio
-        except Exception:
-            log('winotify not available. Please install winotify in the build environment.')
-            return
-
-        try:
+            log('notify() called on non-Windows platform')
+        else:
             toast = Notification(app_id=app_name,
                                  title=title,
                                  msg=text,
                                  icon=get_icon_path())
             toast.set_audio(audio.Default, loop=False)
             toast.show()
-        except Exception:
-            log("winotify toast failed:", traceback.format_exc())
+
+        # Handle additional sound/tts behavior based on CONFIG
+        sound_setting = CONFIG.get('sound', 'windows')
+        if sound_setting == 'sound_file':
+            try:
+                play_sound()
+            except Exception:
+                log('play_sound() failed:', traceback.format_exc())
+        elif sound_setting == 'tts':
+            try:
+                combined = f"{title}\n\n{text}"
+                text_to_speech(combined)
+            except Exception:
+                log('text_to_speech() failed:', traceback.format_exc())
+
+
+def play_sound():
+    """Play the sound_file.mp3 located next to the installed exe or bundled in the EXE.
+    Users can replace the installed sound_file.mp3 to customize the sound.
+    """
+    path = get_sound_path()
+    if not os.path.exists(path):
+        log('play_sound: sound file not found:', path)
+        return
+    # Use pygame mixer.music to stream and play the MP3 (reliable repeated playback)
+    # Load and play (non-blocking)
+    pygame.mixer.music.load(path)
+    pygame.mixer.music.play()
 
 
 def restart_connections():
@@ -650,6 +712,16 @@ def install_to_user_programs_and_startup():
         except Exception:
             log("Icon copy failed:", traceback.format_exc())
 
+        # Copy sound file into install folder if present
+        try:
+            src_sound = get_sound_path()
+            dst_sound = os.path.join(target_dir, SOUND_FILE)
+            if os.path.exists(src_sound):
+                shutil.copy2(src_sound, dst_sound)
+                log("Copied sound to:", dst_sound)
+        except Exception:
+            log("Sound copy failed:", traceback.format_exc())
+
         # Create Startup shortcut via PowerShell (no admin required)
         # Using WScript.Shell COM to generate .lnk
         ps = (
@@ -690,7 +762,8 @@ def uninstall_from_user_programs_and_startup():
         subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_remove], check=False)
 
         # Remove exe and icon
-        for p in [exe_path, icon_path]:
+        sound_path = os.path.join(target_dir, SOUND_FILE)
+        for p in [exe_path, icon_path, sound_path]:
             try:
                 if os.path.exists(p):
                     os.remove(p)

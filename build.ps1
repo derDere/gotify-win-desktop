@@ -30,7 +30,9 @@ Write-Host 'Installing dependencies...' -ForegroundColor Cyan
 # Build exe
 Write-Host 'Building EXE with PyInstaller (GotifyClient.exe)...' -ForegroundColor Cyan
 $Icon = Join-Path $RepoRoot 'notify_client.ico'
+$Sound = Join-Path $RepoRoot 'sound_file.mp3'
 if (!(Test-Path $Icon)) { Write-Host "Warning: Icon file not found: $Icon" -ForegroundColor Yellow }
+if (!(Test-Path $Sound)) { Write-Host "Warning: Sound file not found: $Sound" -ForegroundColor Yellow }
 
 $PyInstallerArgs = @(
     '--noconfirm',
@@ -39,6 +41,7 @@ $PyInstallerArgs = @(
     '--name=GotifyClient',
     "--icon=$Icon",
     "--add-data=$Icon;.",
+    "--add-data=$Sound;.",
     (Join-Path $RepoRoot 'main.py')
 )
 
