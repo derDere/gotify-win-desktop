@@ -68,8 +68,8 @@ Use a **Gotify client token** for each server stream (`/stream?token=...`). User
 
 ## Troubleshooting
 - If you see `401 Unauthorized`, the app backs off reconnect attempts automatically.
-- Notifications rely on Windows; ensure Focus Assist is off if you don’t see toasts.
+- Notifications rely on Windows; ensure Focus Assist / Do Not Disturb is off if you don’t see toasts.
 
 ## License
-Licensed under the terms in [LICENSE](LICENSE). Project name: gotify-win-desktop.
+GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE). Project name: gotify-win-desktop.
 
